@@ -1,0 +1,16 @@
+
+PHISHING EMAIL DETECTION MODEL - PERFORMANCE SUMMARY
+=====================================================
+
+Dataset: CEAS_08.csv
+Model: DistilBERT (distilbert-base-uncased)
+Training Epochs: 5
+
+TEST SET PERFORMANCE:
+- Accuracy:  0.9980
+- Precision: 0.9980
+- Recall:    0.9980
+- F1 Score:  0.9980
+- ROC-AUC:   0.9999
+
+Training completed successfully!

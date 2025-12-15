@@ -1,0 +1,19 @@
+{
+    "model_name": "distilbert-base-uncased",
+    "max_length": 512,
+    "num_labels": 2,
+    "epochs": 5,
+    "learning_rate": 2e-05,
+    "batch_size": 16,
+    "test_metrics": {
+        "accuracy": 0.9979591836734694,
+        "precision": 0.9979594378890356,
+        "recall": 0.9979591836734694,
+        "f1_score": 0.997959144145509,
+        "roc_auc": 0.9998959807322255
+    },
+    "label_map": {
+        "0": "Legitimate",
+        "1": "Phishing"
+    }
+}
