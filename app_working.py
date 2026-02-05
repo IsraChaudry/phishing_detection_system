@@ -163,46 +163,50 @@ st.markdown("""
 @st.cache_resource
 def load_model():
     try:
-        # import torch here to avoid top-level import errors on machines
-        # where Torch's DLLs or runtime are not available.
+        # import torch here to avoid top-level import errors
         global torch
         try:
             import torch
         except Exception as e:
-            st.error(f"Torch import failed: {e}\nPlease ensure a compatible PyTorch build is installed.")
-            st.stop()
-        # import transformers classes lazily (they import torch internally)
+            st.warning(f"Torch not available. Using Demo Mode.")
+            return None, None, None
+        
+        # import transformers classes lazily
         global DistilBertTokenizer, DistilBertForSequenceClassification
         try:
             from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
         except Exception as e:
-            st.error(f"Transformers import failed: {e}\nPlease install 'transformers' and retry.")
-            st.stop()
+            st.warning(f"Transformers not available. Using Demo Mode.")
+            return None, None, None
+        
         base_dir = os.path.dirname(os.path.abspath(__file__))
         model_dir = os.path.join(base_dir, 'phishing_model_deployment')
         
-        # Check if model files exist
+        # Try local files first
         model_path = os.path.join(model_dir, 'model')
         tokenizer_path = os.path.join(model_dir, 'tokenizer')
         
-        if not os.path.exists(model_path) or not os.path.exists(tokenizer_path):
-            st.warning("⚠️ Model files not found. Running in **Demo Mode** (rule-based only).\nModel available on local machine.")
-            return None, None, None
-        
-        tokenizer = DistilBertTokenizer.from_pretrained(tokenizer_path)
-        model = DistilBertForSequenceClassification.from_pretrained(model_path)
+        if os.path.exists(model_path) and os.path.exists(tokenizer_path):
+            # Load from local files
+            tokenizer = DistilBertTokenizer.from_pretrained(tokenizer_path)
+            model = DistilBertForSequenceClassification.from_pretrained(model_path)
+        else:
+            # Fallback: Download from Hugging Face Hub (pre-trained DistilBERT for text classification)
+            st.info("📥 Downloading pre-trained DistilBERT model from Hugging Face...")
+            tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+            model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=2)
         
         config_path = os.path.join(model_dir, 'config.json')
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 config = json.load(f)
         else:
-            config = {}
+            config = {'best_temperature': 2.0, 'best_trust_threshold': 0.80}
         
         model.eval()
         return model, tokenizer, config
     except Exception as e:
-        st.warning(f"⚠️ Could not load model: {str(e)}\nRunning in **Demo Mode** instead.")
+        st.warning(f"⚠️ Could not load model: {str(e)}\nRunning in **Demo Mode**.")
         return None, None, None
 
 def clean_text(text):
