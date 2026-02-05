@@ -345,8 +345,8 @@ def main():
                         st.metric("Accuracy", f"{metrics.get('accuracy', 0):.2%}")
                         st.metric("Recall", f"{metrics.get('recall', 0):.2%}")
                     with col2:
-                    st.metric("Precision", f"{metrics.get('precision', 0):.2%}")
-                    st.metric("F1 Score", f"{metrics.get('f1_score', 0):.2%}")
+                        st.metric("Precision", f"{metrics.get('precision', 0):.2%}")
+                        st.metric("F1 Score", f"{metrics.get('f1_score', 0):.2%}")
     
     st.markdown("---")
     
