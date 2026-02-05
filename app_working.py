@@ -250,14 +250,17 @@ def predict_phishing(text, model, tokenizer, device='cpu'):
     return pred.item(), probs[0].cpu().numpy(), None, cleaned_text, token_count
 
 def get_action_recommendation(confidence):
+    """Return actionable recommendation based on phishing confidence."""
     if confidence > 0.90:
-        return " QUARANTINE", "High risk detected - quarantine immediately"
-    elif confidence > 0.70:
-        return " REQUIRE REVIEW", "Medium risk - human review recommended"
+        return "🚨 QUARANTINE IMMEDIATELY", "HIGH RISK", "This email shows very strong phishing indicators. Quarantine immediately and inform the sender's IT department.", "#ff0000"
+    elif confidence > 0.80:
+        return "⚠️ REQUIRE URGENT REVIEW", "HIGH RISK", "Strong phishing signals detected. Manual review by security team strongly recommended before delivery.", "#ff6600"
+    elif confidence > 0.65:
+        return "⚡ FLAG FOR REVIEW", "MEDIUM RISK", "Suspicious patterns detected. Recommend security team review before user sees this.", "#ff9900"
     elif confidence > 0.40:
-        return " FLAG SUSPICIOUS", "Suspicious patterns detected"
+        return "⚠️ FLAG SUSPICIOUS", "MEDIUM RISK", "Some unusual patterns detected. Consider additional verification if requesting sensitive info.", "#ffcc00"
     else:
-        return " DELIVER", "Low risk - safe to deliver"
+        return "✓ SAFE TO DELIVER", "LOW RISK", "This email appears legitimate. No major phishing indicators detected.", "#00aa00"
 
 def main():
     # Display splash screen using st.empty() so it can be cleared
@@ -362,28 +365,103 @@ def main():
             st.warning("Please enter email text (minimum 10 characters)")
         else:
             with st.spinner("Analyzing email..."):
-                prediction, probabilities, error, cleaned_text, token_count = predict_phishing(email_text, model, tokenizer, device=device)
+                # Use hybrid predictor (rule-based backup + model)
+                try:
+                    from hybrid_prediction_system import hybrid_predict
+                    prediction, probabilities, error, cleaned_text, token_count = hybrid_predict(email_text, model, tokenizer, device=device)
+                except Exception as e:
+                    # fallback to original predict_phishing if hybrid import fails
+                    prediction, probabilities, error, cleaned_text, token_count = predict_phishing(email_text, model, tokenizer, device=device)
                 
                 if error:
                     st.error(f"Analysis Error: {error}")
                 else:
                     st.markdown("---")
-                    st.markdown("## Analysis Results")
+                    st.markdown("## 📊 Security Analysis Results")
                     
-                    is_phishing = prediction == 1
+                    # Adjusted confidence threshold: require phishing label AND confidence > 0.65
+                    confidence = float(probabilities[1]) if probabilities is not None else 0.0
+                    legit_conf = float(probabilities[0]) if (probabilities is not None and len(probabilities) > 0) else 0.0
+                    is_phishing = (prediction == 1 and confidence > 0.65)
+
+                    if 0.4 < confidence < 0.65:
+                        st.warning("⚠️ **Uncertain Detection**: Model confidence is moderate. Consider additional verification.", icon="⚠️")
+
+                    # Risk level badge
+                    action_text, risk_level, reason, color = get_action_recommendation(confidence)
                     
-                    if is_phishing:
-                        st.markdown('<div class="result-box phishing">PHISHING DETECTED</div>', unsafe_allow_html=True)
+                    # Color-coded result box
+                    if confidence > 0.80:
+                        result_class = "phishing"
+                        result_text = "🚨 PHISHING DETECTED"
+                    elif confidence > 0.65:
+                        result_class = "phishing"
+                        result_text = "⚠️ SUSPICIOUS EMAIL"
                     else:
-                        st.markdown('<div class="result-box legitimate">LEGITIMATE EMAIL</div>', unsafe_allow_html=True)
+                        result_class = "legitimate"
+                        result_text = "✅ LEGITIMATE EMAIL"
+
+                    st.markdown(f'<div class="result-box {result_class}">{result_text}</div>', unsafe_allow_html=True)
                     
-                    col1, col2 = st.columns(2)
+                    # Confidence metrics in columns
+                    col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("Legitimate Confidence", f"{probabilities[0]*100:.2f}%")
-                        st.progress(float(probabilities[0]))
+                        st.metric("🚨 Phishing Risk", f"{confidence*100:.1f}%")
                     with col2:
-                        st.metric("Phishing Confidence", f"{probabilities[1]*100:.2f}%")
-                        st.progress(float(probabilities[1]))
+                        st.metric("✅ Legitimacy", f"{legit_conf*100:.1f}%")
+                    with col3:
+                        st.metric("📍 Risk Level", risk_level)
+
+                    # Confidence bars
+                    st.write("**Confidence Distribution:**")
+                    col_leg, col_phish = st.columns(2)
+                    with col_leg:
+                        st.write(f"Legitimate: {legit_conf*100:.1f}%")
+                        st.progress(legit_conf)
+                    with col_phish:
+                        st.write(f"Phishing: {confidence*100:.1f}%")
+                        st.progress(confidence)
+
+                    # Clear recommendation section
+                    st.markdown("---")
+                    st.markdown("## 🎯 Security Recommendation")
+                    st.markdown(f'<div style="background-color: {color}; padding: 16px; border-radius: 8px; color: white; font-weight: bold; font-size: 16px;">{action_text}</div>', unsafe_allow_html=True)
+                    st.info(f"**Why:** {reason}")
+
+                    # Details expander
+                    with st.expander("📋 View Technical Details"):
+                        col_orig, col_clean = st.columns(2)
+                        with col_orig:
+                            st.write("**Original Email Text:**")
+                            st.text_area("Original", value=email_text, height=120, disabled=True, label_visibility="collapsed")
+                        with col_clean:
+                            st.write("**Processed Text:**")
+                            st.text_area("Cleaned", value=cleaned_text, height=120, disabled=True, label_visibility="collapsed")
+                        
+                        st.write("**Analysis Details:**")
+                        st.json({
+                            'Tokens': token_count,
+                            'Phishing Confidence': f"{confidence:.4f}",
+                            'Legitimate Confidence': f"{legit_conf:.4f}",
+                            'Risk Level': risk_level,
+                        })
+                        
+                        suspicious = [w for w in ['urgent','verify','click','winner','congratulations','update','payment','account','password', 'final', 'immediately'] if w in cleaned_text]
+                        if suspicious:
+                            st.write(f"**⚠️ Suspicious Keywords Found:** {', '.join(suspicious)}")
+                        else:
+                            st.write("**✅ No suspicious keywords detected**")
+                    
+                    st.markdown("---")
+                    
+                    # Action items based on risk
+                    st.markdown("## ✅ Recommended Actions")
+                    if confidence > 0.80:
+                        st.error("**🛑 HIGH RISK - DO NOT INTERACT**\n\n1. ❌ Do NOT click any links in this email\n2. 🚨 Quarantine immediately\n3. 📞 Report to IT security\n4. ✔️ Verify sender through alternative channel", icon="🛑")
+                    elif confidence > 0.65:
+                        st.warning("**⚠️ MEDIUM RISK - CAUTION REQUIRED**\n\n1. ⚠️ Do NOT click suspicious links\n2. 🔍 Verify sender identity\n3. 🚫 Do NOT share personal/financial info\n4. 📢 Report if suspicious", icon="⚠️")
+                    else:
+                        st.success("**✅ LOW RISK - SAFE**\n\n1. ✓ Email appears legitimate\n2. ✓ Standard handling OK\n3. ⚠️ Still exercise caution with requests\n4. 📢 Report unusual behavior", icon="✅")
 
                     # Details expander
                     with st.expander("View Analysis Details"):
@@ -393,33 +471,7 @@ def main():
                         suspicious = [w for w in ['urgent','verify','click','winner','congratulations','update','payment','account','password'] if w in cleaned_text]
                         st.write(f"**Suspicious Keywords:** {', '.join(suspicious) if suspicious else 'None'}")
                     
-                    st.markdown("---")
-                    st.markdown("### Recommended Action")
-                    
-                    action, reason = get_action_recommendation(probabilities[1])
-                    st.success(f"**{action}**\n\n{reason}")
-                    # allow user to download or copy recommendation
-                    with st.container():
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.download_button("Download Recommendation", data=f"{action}\n{reason}", file_name="recommendation.txt", use_container_width=True)
-                        with col2:
-                            # copy-to-clipboard button using a tiny JS snippet in an iframe
-                            copy_html = f"""
-                            <button id='copy-btn' style='padding:10px 16px;border-radius:8px;border:none;background:#a5d6a7;color:#1b5e20;cursor:pointer;font-weight:600;width:100%;font-size:14px'>Copy Recommendation</button>
-                            <script>
-                            const btn = document.getElementById('copy-btn');
-                            btn.addEventListener('click', () => {{
-                                const text = {json.dumps(action + '\n' + reason)};
-                                navigator.clipboard.writeText(text).then(()=>{{
-                                    btn.innerText = 'Copied Successfully';
-                                    btn.style.background = '#81c784';
-                                    setTimeout(()=>{{ btn.innerText = 'Copy Recommendation'; btn.style.background = '#a5d6a7'; }}, 1500);
-                                }}).catch(()=>{{ alert('Copy failed. Please use the download button.'); }});
-                            }});
-                            </script>
-                            """
-                            components.html(copy_html, height=50)
+
     
     st.markdown("---")
     st.markdown(
