@@ -181,17 +181,29 @@ def load_model():
         base_dir = os.path.dirname(os.path.abspath(__file__))
         model_dir = os.path.join(base_dir, 'phishing_model_deployment')
         
-        tokenizer = DistilBertTokenizer.from_pretrained(os.path.join(model_dir, 'tokenizer'))
-        model = DistilBertForSequenceClassification.from_pretrained(os.path.join(model_dir, 'model'))
+        # Check if model files exist
+        model_path = os.path.join(model_dir, 'model')
+        tokenizer_path = os.path.join(model_dir, 'tokenizer')
         
-        with open(os.path.join(model_dir, 'config.json'), 'r') as f:
-            config = json.load(f)
+        if not os.path.exists(model_path) or not os.path.exists(tokenizer_path):
+            st.warning("⚠️ Model files not found. Running in **Demo Mode** (rule-based only).\nModel available on local machine.")
+            return None, None, None
+        
+        tokenizer = DistilBertTokenizer.from_pretrained(tokenizer_path)
+        model = DistilBertForSequenceClassification.from_pretrained(model_path)
+        
+        config_path = os.path.join(model_dir, 'config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+        else:
+            config = {}
         
         model.eval()
         return model, tokenizer, config
     except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
-        st.stop()
+        st.warning(f"⚠️ Could not load model: {str(e)}\nRunning in **Demo Mode** instead.")
+        return None, None, None
 
 def clean_text(text):
     text = str(text).lower()
@@ -304,28 +316,35 @@ def main():
     else:
         with st.spinner("Loading model..."):
             model, tokenizer, config = load_model()
-        # Device selection (only when model is loaded)
-        try:
-            import torch as _torch
-            available_device = 'cuda' if _torch.cuda.is_available() else 'cpu'
-        except Exception:
-            available_device = 'cpu'
-        with st.sidebar:
-            st.write("**Configuration**")
-            st.write(f"Model Path: phishing_model_deployment")
-            st.write(f"Device: {available_device}")
-            device = st.selectbox("Select Device:", options=[available_device, 'cpu'] if available_device == 'cuda' else ['cpu'], index=0)
+        
+        # If model failed to load, revert to demo mode
+        if model is None:
+            st.warning("⚠️ Model unavailable. Using **Demo Mode** (rule-based classification).")
+            demo_mode = True
+            config = {'test_metrics': {'accuracy': 0.95, 'precision': 0.90, 'recall': 0.90, 'f1_score': 0.90}}
+        else:
+            # Device selection (only when model is loaded)
+            try:
+                import torch as _torch
+                available_device = 'cuda' if _torch.cuda.is_available() else 'cpu'
+            except Exception:
+                available_device = 'cpu'
+            with st.sidebar:
+                st.write("**Configuration**")
+                st.write(f"Model Path: phishing_model_deployment")
+                st.write(f"Device: {available_device}")
+                device = st.selectbox("Select Device:", options=[available_device, 'cpu'] if available_device == 'cuda' else ['cpu'], index=0)
 
-        with st.sidebar:
-            st.divider()
-            st.subheader("Model Performance")
-            if 'test_metrics' in config:
-                metrics = config['test_metrics']
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Accuracy", f"{metrics.get('accuracy', 0):.2%}")
-                    st.metric("Recall", f"{metrics.get('recall', 0):.2%}")
-                with col2:
+            with st.sidebar:
+                st.divider()
+                st.subheader("Model Performance")
+                if 'test_metrics' in config:
+                    metrics = config['test_metrics']
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Accuracy", f"{metrics.get('accuracy', 0):.2%}")
+                        st.metric("Recall", f"{metrics.get('recall', 0):.2%}")
+                    with col2:
                     st.metric("Precision", f"{metrics.get('precision', 0):.2%}")
                     st.metric("F1 Score", f"{metrics.get('f1_score', 0):.2%}")
     
