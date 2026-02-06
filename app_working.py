@@ -358,9 +358,11 @@ def main():
                 st.divider()
                 st.subheader("Model Performance")
                 # Safely handle config being None or unexpected types
-                metrics = {}
-                if isinstance(config, dict):
-                    metrics = config.get('test_metrics') if isinstance(config.get('test_metrics'), dict) else {}
+                metrics: dict = {}
+                if isinstance(config, dict) and 'test_metrics' in config:
+                    test_metrics = config.get('test_metrics')
+                    if isinstance(test_metrics, dict):
+                        metrics = test_metrics
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Accuracy", f"{metrics.get('accuracy', 0):.2%}")
