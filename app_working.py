@@ -185,16 +185,31 @@ def load_model():
         # Try local files first
         model_path = os.path.join(model_dir, 'model')
         tokenizer_path = os.path.join(model_dir, 'tokenizer')
-        
+
+        # Allow overriding model repo via environment variable for Spaces
+        hf_model_repo = os.getenv('HF_MODEL_REPO', 'pancakewithoutsleep/phishing-detector')
+        hf_token = os.getenv('HF_TOKEN')
+
         if os.path.exists(model_path) and os.path.exists(tokenizer_path):
-            # Load from local files
+            # Load from local files (developer/local case)
             tokenizer = DistilBertTokenizer.from_pretrained(tokenizer_path)
             model = DistilBertForSequenceClassification.from_pretrained(model_path)
         else:
-            # Fallback: Download from Hugging Face Hub (pre-trained DistilBERT for text classification)
-            st.info("📥 Downloading pre-trained DistilBERT model from Hugging Face...")
-            tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
-            model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=2)
+            # Try to load your uploaded model from the Hugging Face Hub
+            try:
+                st.info(f"📥 Downloading model from Hugging Face repo: {hf_model_repo} ...")
+                if hf_token:
+                    tokenizer = DistilBertTokenizer.from_pretrained(hf_model_repo, use_auth_token=hf_token)
+                    model = DistilBertForSequenceClassification.from_pretrained(hf_model_repo, use_auth_token=hf_token)
+                else:
+                    # public repo fallback
+                    tokenizer = DistilBertTokenizer.from_pretrained(hf_model_repo)
+                    model = DistilBertForSequenceClassification.from_pretrained(hf_model_repo)
+            except Exception:
+                # Final fallback: generic DistilBERT (no task-specific weights)
+                st.info("📥 Could not download your model — falling back to generic DistilBERT model.")
+                tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+                model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=2)
         
         config_path = os.path.join(model_dir, 'config.json')
         if os.path.exists(config_path):
@@ -342,15 +357,17 @@ def main():
             with st.sidebar:
                 st.divider()
                 st.subheader("Model Performance")
-                if 'test_metrics' in config:
-                    metrics = config['test_metrics']
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Accuracy", f"{metrics.get('accuracy', 0):.2%}")
-                        st.metric("Recall", f"{metrics.get('recall', 0):.2%}")
-                    with col2:
-                        st.metric("Precision", f"{metrics.get('precision', 0):.2%}")
-                        st.metric("F1 Score", f"{metrics.get('f1_score', 0):.2%}")
+                # Safely handle config being None or unexpected types
+                metrics = {}
+                if isinstance(config, dict):
+                    metrics = config.get('test_metrics') if isinstance(config.get('test_metrics'), dict) else {}
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Accuracy", f"{metrics.get('accuracy', 0):.2%}")
+                    st.metric("Recall", f"{metrics.get('recall', 0):.2%}")
+                with col2:
+                    st.metric("Precision", f"{metrics.get('precision', 0):.2%}")
+                    st.metric("F1 Score", f"{metrics.get('f1_score', 0):.2%}")
     
     st.markdown("---")
     
